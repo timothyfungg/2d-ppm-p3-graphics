@@ -39,6 +39,7 @@ class Framebuffer:
 # Row 3, col 3 added to matrix such that translations are also scaled during matrix multiplication (eg. objet rotates, translation also rotates)
 @dataclass(frozen = True)
 class mat2D:
+    # Default values (no scale, no translation)
     a: float = 1.0
     b: float = 0.0
     c: float = 0.0
@@ -65,3 +66,22 @@ class mat2D:
         # Transformation + translation
         # [[a, c][b, d]] * [x, y] + [e, f]
         return (self.a * x + self.c * y + self.e, self.b * x + self.d * y + self.f)
+    
+    # Set e and f
+    @staticmethod
+    def translate(tx: float, ty: float) -> "mat2D":
+        return mat2D(e = tx, f = ty)
+    
+    # Set a and d, set a = d if only one parameter given
+    @staticmethod
+    def scale(sx: float, sy: Optional[float] = None) -> "mat2D":
+        if(sy is None):
+            sy = sx
+        return mat2D(a = sx, d = sy)
+
+    # Rotate ccw
+    @staticmethod
+    def rotate(rad: float) -> "mat2D":
+        cs = math.cos(rad)
+        sn = math.sin(rad)
+        return mat2D(a = cs, b = sn, c = -sn, d = cs)
