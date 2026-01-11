@@ -30,3 +30,38 @@ class Framebuffer:
                 f.write(" ".join(f"{r} {g} {b}" for (r, g, b) in row)) # Loop through each pixel (tuple) and create a string (eg. '255, 255, 255') that is then joined to the larger string
                 f.write("\n")
 
+# Affine matrices in the form:
+# a    c    e
+# b    d    f
+# 0    0    1
+# [[a, c], [b, d]] for multiplication (stretch, shear, etc.)
+# [e, f] for translation
+# Row 3, col 3 added to matrix such that translations are also scaled during matrix multiplication (eg. objet rotates, translation also rotates)
+@dataclass(frozen = True)
+class mat2D:
+    a: float = 1.0
+    b: float = 0.0
+    c: float = 0.0
+    d: float = 1.0
+    e: float = 0.0
+    f: float = 0.0
+
+    # Matrix multiplication, called using @ operator (eg. mat1 @ mat2)
+    def __matmul__(self, o: "mat2D") -> "mat2D": # Takes mat2D, returns mat2D
+        return mat2D(
+            a = self.a * o.a + self.c * o.b,
+            b = self.b * o.a + self.d * o.b,
+            c = self.a * o.c + self.c * o.d,
+            d = self.b * o.c + self.d * o.d,
+            e = self.a * o.e + self.c * o.f + self.e,
+            f = self.b * o.e + self.d * o.f + self.f,
+        )
+    
+    # Apply matrix transformation to point
+    def apply(self, p: point) -> point:
+        x = p[0]
+        y = p[2]
+
+        # Transformation + translation
+        # [[a, c][b, d]] * [x, y] + [e, f]
+        return (self.a * x + self.c * y + self.e, self.b * x + self.d * y + self.f)
