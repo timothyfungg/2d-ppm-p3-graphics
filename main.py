@@ -107,6 +107,7 @@ def draw_line(fb: Framebuffer, p0: point, p1: point, colour: colour) -> None:
             y0 += sy
 
 # Takes 2 vertices of a triangle (a, b) and a point (c) and computes the cross product (same magnitude as determiant for 2x2) between AB and AC
+# Can visualize with right hand rule on AB x AC
 # Run 3 times for each pair of vertices to determine if c is within the triangle (if so, all 3 results will be the same sign)
 # If all signs are the same, that means c is to the left/right of all vertices and is therefore inside the triangle
 def edge_fn(a: point, b: point, c: point) -> float:
@@ -124,7 +125,7 @@ def fill_triangle(fb: Framebuffer, a: point, b: point, c: point, colour: colour)
         return
     # Change AB x AC to AC x AB if negative, such that only all positives must be checked
     if area < 0:
-        b, c = c, b  # flip
+        b, c = c, b  # lip
 
     # Loop through each row of pixels
     for y in range(miny, maxy + 1):
@@ -142,7 +143,7 @@ def fill_triangle(fb: Framebuffer, a: point, b: point, c: point, colour: colour)
                 fb.set_px(x, y, colour)
 
 # Checks if list of vertices are progressing cw or ccw
-# Process explanation (using cartesian plane)
+# Process (using cartesian plane)
 # 1. Divide polygon up with vertical lines, creating trapezoids between x axis and top of polygon and x axis and bottom of polygon
 # 2. Calculate area of each trapezoid: (x_2 - x_1)(y_2 + y_1) / 2, the half is dropped because only the sign matters
 #    Formula is identical to [(a + b) * h] / 2, where h = c (right trapezoid) and c = x_2 - x_1 and a + b = y_1 + y_2
@@ -171,3 +172,58 @@ def point_in_tri(p: point, a: point, b: point, c: point) -> bool:
     has_neg = (w0 < 0) or (w1 < 0) or (w2 < 0) # True if any area is negative
     has_pos = (w0 > 0) or (w1 > 0) or (w2 > 0) # True if any area is positive
     return not (has_neg and has_pos) # True if either no negative or no positive
+
+# Tessellate polygon into triangles, takes list of points, returns list of triangles
+# Process
+# 1. Check if corner is convex by using edge_fn on a side (prev cur) and the next vertex (nxt)
+#    Convex if positive
+# 2. Check if ther are no other vertices in the corner by using point_in_tri
+# 3. If 1 and 2 are true, cut triangle
+# 4. Continue to next corner
+def triangulate_ear_clipping(poly: List[point]) -> List[Tuple[point, point, point]]:
+    # Simple ear clipping for simple polygons (no self-intersections).
+    if len(poly) < 3:
+        return []
+    pts = poly[:] # Shallow copy of poly (deep copy not necessary since not mutating any inner wrappers, only removing them from list)
+
+    # Check for ccw such that only all positive case must be checked
+    if not is_ccw(pts):
+        pts.reverse()
+
+    triangles: List[Tuple[point, point, point]] = [] # Output
+
+    # Check if polygon is convex
+    def is_convex(prev: point, cur: point, nxt: point) -> bool:
+        return edge_fn(prev, cur, nxt) > 0  # CCW convex
+
+    i = 0
+    guard = 0 # Exit loop if stuck
+    while len(pts) > 3 and guard < 10000:
+        guard += 1
+        
+        # Sliding window
+        # Mod by length to loop back to beginning
+        prev = pts[(i - 1) % len(pts)]
+        cur  = pts[i % len(pts)] # Corner being cut off
+        nxt  = pts[(i + 1) % len(pts)]
+
+        if is_convex(prev, cur, nxt):
+            # Check for other points within ear
+            ear_ok = True
+            for p in pts:
+                # Skip to next loop if checking ear vertex (save time)
+                if p in (prev, cur, nxt):
+                    continue
+                # Check if point is in triangle, terminate if so
+                if point_in_tri(p, prev, cur, nxt):
+                    ear_ok = False
+                    break
+            # If both checks succeed, add triangle to output list and remove corner from list and reset loop
+            if ear_ok:
+                triangles.append((prev, cur, nxt))
+                pts.pop(i % len(pts))
+                i = 0
+                continue
+        
+        # Increment by 1, return back to start
+        i = (i + 1) % len(pts)
