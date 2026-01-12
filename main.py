@@ -7,8 +7,7 @@ point = Tuple[float, float] # In the form [x, y]
 
 class Framebuffer:
     def __init__(self, w: int, h: int):
-        self.w = w
-        self.h = h
+        self.w, self.h = w, h
         bg = (255, 255, 255) # White
         # Initialize screen with w columns and h rows as a white background
         self.pixels = [[bg for _ in range(w)] for _ in range(h)] # to access each px, [y][x] starting at (0, 0)
@@ -60,8 +59,7 @@ class mat2D:
     
     # Apply matrix transformation to point
     def apply(self, p: point) -> point:
-        x = p[0]
-        y = p[2]
+        x, y = p
 
         # Transformation + translation
         # [[a, c][b, d]] * [x, y] + [e, f]
@@ -82,6 +80,94 @@ class mat2D:
     # Rotate ccw
     @staticmethod
     def rotate(rad: float) -> "mat2D":
-        cs = math.cos(rad)
-        sn = math.sin(rad)
+        cs, sn = math.cos(rad), math.sin(rad)
         return mat2D(a = cs, b = sn, c = -sn, d = cs)
+
+# Draws line between two points using Bresenham's line algorithm
+def draw_line(fb: Framebuffer, p0: point, p1: point, colour: colour) -> None:
+    x0, y0 = int(round(p0[0])), int(round(p0[1]))
+    x1, y1 = int(round(p1[0])), int(round(p1[1]))
+
+    dx = abs(x1 - x0)
+    dy = abs(y1 - y0)
+    sx = 1 if x0 < x1 else -1
+    sy = 1 if y0 < y1 else -1
+    err = dx - dy
+
+    while True:
+        fb.set_px(x0, y0, colour)
+        if x0 == x1 and y0 == y1:
+            break
+        e2 = 2 * err
+        if e2 > -dy:
+            err -= dy
+            x0 += sx
+        if e2 < dx:
+            err += dx
+            y0 += sy
+
+# Takes 2 vertices of a triangle (a, b) and a point (c) and computes the cross product (same magnitude as determiant for 2x2) between AB and AC
+# Run 3 times for each pair of vertices to determine if c is within the triangle (if so, all 3 results will be the same sign)
+# If all signs are the same, that means c is to the left/right of all vertices and is therefore inside the triangle
+def edge_fn(a: point, b: point, c: point) -> float:
+    return (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
+
+def fill_triangle(fb: Framebuffer, a: point, b: point, c: point, colour: colour) -> None:
+    # Rectangle containing triangle, check these pixels
+    minx = int(math.floor(min(a[0], b[0], c[0])))
+    maxx = int(math.ceil (max(a[0], b[0], c[0])))
+    miny = int(math.floor(min(a[1], b[1], c[1])))
+    maxy = int(math.ceil (max(a[1], b[1], c[1])))
+
+    area = edge_fn(a, b, c)
+    if area == 0:
+        return
+    # Change AB x AC to AC x AB if negative, such that only all positives must be checked
+    if area < 0:
+        b, c = c, b  # flip
+
+    # Loop through each row of pixels
+    for y in range(miny, maxy + 1):
+        # Loop through each pixel in the row
+        for x in range(minx, maxx + 1):
+            p = (x + 0.5, y + 0.5) # Ensures the center of the pixel is checked
+            
+            # Check vertices
+            w0 = edge_fn(b, c, p)
+            w1 = edge_fn(c, a, p)
+            w2 = edge_fn(a, b, p)
+
+            # Check if positive, set colour if so
+            if w0 >= 0 and w1 >= 0 and w2 >= 0:
+                fb.set_px(x, y, colour)
+
+# Checks if list of vertices are progressing cw or ccw
+# Process explanation (using cartesian plane)
+# 1. Divide polygon up with vertical lines, creating trapezoids between x axis and top of polygon and x axis and bottom of polygon
+# 2. Calculate area of each trapezoid: (x_2 - x_1)(y_2 + y_1) / 2, the half is dropped because only the sign matters
+#    Formula is identical to [(a + b) * h] / 2, where h = c (right trapezoid) and c = x_2 - x_1 and a + b = y_1 + y_2
+#    Or a and b are the parallel sides and c is the side perpendicular to the x-axis
+# 3. Sum the area of each trapezoid
+#    Magnitude of trapezoids calculated at the top are larger than the bottom, therefore if moving left at the top, delta x will be negative and area will be negative
+#    If moving right at the top, delta x will be positive and area will be positive
+#    Note: similar to a circle, when moving cw, the top half will always be completed moving right, no matter the starting position, the converse also holds true
+# 4. Moving right at top (positive area): cw
+#    Moving left at top (negative area): ccw
+def is_ccw(poly: List[point]) -> bool:
+    s = 0.0 # Sum of area
+    for i in range(len(poly)):
+        x1, y1 = poly[i]
+        x2, y2 = poly[(i + 1) % len(poly)] # Mod length resets the index to 0 (returns to start)
+        s += (x2 - x1) * (y2 + y1) # Calculate area, add to sum
+    return s < 0
+
+# Uses edge_fn to check if point is within triangle
+def point_in_tri(p: point, a: point, b: point, c: point) -> bool:
+    # Check all pairs of vertices
+    w0 = edge_fn(a, b, p)
+    w1 = edge_fn(b, c, p)
+    w2 = edge_fn(c, a, p)
+
+    has_neg = (w0 < 0) or (w1 < 0) or (w2 < 0) # True if any area is negative
+    has_pos = (w0 > 0) or (w1 > 0) or (w2 > 0) # True if any area is positive
+    return not (has_neg and has_pos) # True if either no negative or no positive
