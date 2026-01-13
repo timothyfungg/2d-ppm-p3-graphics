@@ -1,22 +1,20 @@
 import math
 from dataclasses import dataclass
-from typing import List, Tuple, Optional
 
-colour = Tuple[int, int, int] # In the form [R, G, B]
-point = Tuple[float, float] # In the form [x, y]
+Colour = tuple[int, int, int] # In the form [R, G, B]
+Point = tuple[float, float] # In the form [x, y]
 
 class Framebuffer:
-    def __init__(self, w: int, h: int):
+    def __init__(self, w: int, h: int, bg: Colour = (255, 255, 255)):
         self.w, self.h = w, h
-        bg = (255, 255, 255) # White
-        # Initialize screen with w columns and h rows as a white background
+        # Initialize screen with w columns and h rows as a bg colour background
         self.pixels = [[bg for _ in range(w)] for _ in range(h)] # to access each px, [y][x] starting at (0, 0)
     
-    def setPx(self, x: int, y: int, colour: colour):
-        if(0 <= y < self.y and 0 <= x < self.w):
+    def set_px(self, x: int, y: int, colour: Colour):
+        if(0 <= x < self.w and 0 <= y < self.h):
             self.pixels[y][x] = colour
 
-    def savePpm(self, path: str):
+    def save_ppm(self, path: str):
         with open(path, "w") as f:
             # Write header:
                 # P3
@@ -37,7 +35,7 @@ class Framebuffer:
 # [e, f] for translation
 # Row 3, col 3 added to matrix such that translations are also scaled during matrix multiplication (eg. objet rotates, translation also rotates)
 @dataclass(frozen = True)
-class mat2D:
+class Mat2D:
     # Default values (no scale, no translation)
     a: float = 1.0
     b: float = 0.0
@@ -47,8 +45,8 @@ class mat2D:
     f: float = 0.0
 
     # Matrix multiplication, called using @ operator (eg. mat1 @ mat2)
-    def __matmul__(self, o: "mat2D") -> "mat2D": # Takes mat2D, returns mat2D
-        return mat2D(
+    def __matmul__(self, o: "Mat2D") -> "Mat2D": # Takes Mat2D, returns Mat2D
+        return Mat2D(
             a = self.a * o.a + self.c * o.b,
             b = self.b * o.a + self.d * o.b,
             c = self.a * o.c + self.c * o.d,
@@ -58,7 +56,7 @@ class mat2D:
         )
     
     # Apply matrix transformation to point
-    def apply(self, p: point) -> point:
+    def apply(self, p: Point) -> Point:
         x, y = p
 
         # Transformation + translation
@@ -67,24 +65,24 @@ class mat2D:
     
     # Set e and f
     @staticmethod
-    def translate(tx: float, ty: float) -> "mat2D":
-        return mat2D(e = tx, f = ty)
+    def translate(tx: float, ty: float) -> "Mat2D":
+        return Mat2D(e = tx, f = ty)
     
     # Set a and d, set a = d if only one parameter given
     @staticmethod
-    def scale(sx: float, sy: Optional[float] = None) -> "mat2D":
+    def scale(sx: float, sy: float | None = None) -> "Mat2D":
         if(sy is None):
             sy = sx
-        return mat2D(a = sx, d = sy)
+        return Mat2D(a = sx, d = sy)
 
     # Rotate ccw
     @staticmethod
-    def rotate(rad: float) -> "mat2D":
+    def rotate(rad: float) -> "Mat2D":
         cs, sn = math.cos(rad), math.sin(rad)
-        return mat2D(a = cs, b = sn, c = -sn, d = cs)
+        return Mat2D(a = cs, b = sn, c = -sn, d = cs)
 
 # Draws line between two points using Bresenham's line algorithm
-def draw_line(fb: Framebuffer, p0: point, p1: point, colour: colour) -> None:
+def draw_line(fb: Framebuffer, p0: Point, p1: Point, colour: Colour) -> None:
     x0, y0 = int(round(p0[0])), int(round(p0[1]))
     x1, y1 = int(round(p1[0])), int(round(p1[1]))
 
@@ -110,10 +108,10 @@ def draw_line(fb: Framebuffer, p0: point, p1: point, colour: colour) -> None:
 # Can visualize with right hand rule on AB x AC
 # Run 3 times for each pair of vertices to determine if c is within the triangle (if so, all 3 results will be the same sign)
 # If all signs are the same, that means c is to the left/right of all vertices and is therefore inside the triangle
-def edge_fn(a: point, b: point, c: point) -> float:
+def edge_fn(a: Point, b: Point, c: Point) -> float:
     return (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
 
-def fill_triangle(fb: Framebuffer, a: point, b: point, c: point, colour: colour) -> None:
+def fill_triangle(fb: Framebuffer, a: Point, b: Point, c: Point, colour: Colour) -> None:
     # Rectangle containing triangle, check these pixels
     minx = int(math.floor(min(a[0], b[0], c[0])))
     maxx = int(math.ceil (max(a[0], b[0], c[0])))
@@ -154,7 +152,7 @@ def fill_triangle(fb: Framebuffer, a: point, b: point, c: point, colour: colour)
 #    Note: similar to a circle, when moving cw, the top half will always be completed moving right, no matter the starting position, the converse also holds true
 # 4. Moving right at top (positive area): cw
 #    Moving left at top (negative area): ccw
-def is_ccw(poly: List[point]) -> bool:
+def is_ccw(poly: list[Point]) -> bool:
     s = 0.0 # Sum of area
     for i in range(len(poly)):
         x1, y1 = poly[i]
@@ -163,7 +161,7 @@ def is_ccw(poly: List[point]) -> bool:
     return s < 0
 
 # Uses edge_fn to check if point is within triangle
-def point_in_tri(p: point, a: point, b: point, c: point) -> bool:
+def point_in_tri(p: Point, a: Point, b: Point, c: Point) -> bool:
     # Check all pairs of vertices
     w0 = edge_fn(a, b, p)
     w1 = edge_fn(b, c, p)
@@ -180,7 +178,7 @@ def point_in_tri(p: point, a: point, b: point, c: point) -> bool:
 # 2. Check if ther are no other vertices in the corner by using point_in_tri
 # 3. If 1 and 2 are true, cut triangle
 # 4. Continue to next corner
-def triangulate_ear_clipping(poly: List[point]) -> List[Tuple[point, point, point]]:
+def triangulate_ear_clipping(poly: list[Point]) -> list[tuple[Point, Point, Point]]:
     # Simple ear clipping for simple polygons (no self-intersections).
     if len(poly) < 3:
         return []
@@ -190,10 +188,10 @@ def triangulate_ear_clipping(poly: List[point]) -> List[Tuple[point, point, poin
     if not is_ccw(pts):
         pts.reverse()
 
-    triangles: List[Tuple[point, point, point]] = [] # Output
+    triangles: list[tuple[Point, Point, Point]] = [] # Output
 
     # Check if polygon is convex
-    def is_convex(prev: point, cur: point, nxt: point) -> bool:
+    def is_convex(prev: Point, cur: Point, nxt: Point) -> bool:
         return edge_fn(prev, cur, nxt) > 0  # CCW convex
 
     i = 0
@@ -225,5 +223,83 @@ def triangulate_ear_clipping(poly: List[point]) -> List[Tuple[point, point, poin
                 i = 0
                 continue
         
-        # Increment by 1, return back to start
+        # Increment by 1, loop back to start
         i = (i + 1) % len(pts)
+
+    # If polygon is a triangle
+    if len(pts) == 3:
+        triangles.append((pts[0], pts[1], pts[2]))
+    return triangles
+
+# Outline of shape
+@dataclass
+class Stroke:
+    colour: Colour = (0, 0, 0)
+
+# Fill of shape
+@dataclass
+class Fill:
+    colour: Colour | None = None
+
+# Parent class of all objects
+class Node:
+    # Optional affine matrix
+    def __init__(self, transform: Mat2D | None = None):
+        self.transform = transform or Mat2D() # Default affine matrix if none given
+
+    # Force all children to have this method
+    def render(self, fb: Framebuffer, parent_tf: Mat2D) -> None:
+        raise NotImplementedError
+
+# Child of Node, holds other objects/children
+# Allows for creation of complex objects using smaller objects
+class Group(Node):
+    # Optional list of children and affine matrix
+    def __init__(self, children: list[Node] | None = None, transform: Mat2D | None = None):
+        super().__init__(transform)
+        self.children: list[Node] = children or []
+
+    # Loops through children and applies affine transformation
+    def render(self, fb: Framebuffer, parent_tf: Mat2D) -> None:
+        tf = parent_tf @ self.transform # Applies new transformation to self
+        for ch in self.children:
+            ch.render(fb, tf) # Calls the render function of the child
+
+# Child of Node, represents a line
+class Line(Node):
+    # Takes two points, a stroke colour and an optional affine matrix
+    def __init__(self, p0: Point, p1: Point, stroke = Stroke(), transform: Mat2D | None = None):
+        super().__init__(transform)
+        self.p0, self.p1 = p0, p1
+        self.stroke = stroke
+
+    # Draws line with transformed points and stroke colour
+    def render(self, fb: Framebuffer, parent_tf: Mat2D) -> None:
+        tf = parent_tf @ self.transform
+        draw_line(fb, tf.apply(self.p0), tf.apply(self.p1), self.stroke.colour)
+
+# Child of Node, represents a polygon
+class Polygon(Node):
+    # Takes a list of vertices, stroke colour, optional fill colour and optional affine matrix
+    def __init__(self, pts: list[Point], stroke = Stroke(), fill = Fill(None), transform: Mat2D | None = None):
+        super().__init__(transform)
+        self.pts = pts
+        self.stroke = stroke
+        self.fill = fill
+
+    # Draws polygon with transformed points, stroke colour and fill colour
+    def render(self, fb: Framebuffer, parent_tf: Mat2D) -> None:
+        tf = parent_tf @ self.transform
+        pts = [tf.apply(p) for p in self.pts] # Apply transformation to all points
+
+        # If there is a fill colour and polygon has volume
+        if self.fill.colour is not None and len(pts) >= 3:
+            tris = triangulate_ear_clipping(pts) # Triangulate polygon
+            # Loop through triangle list and fill each triangle
+            for a, b, c in tris:
+                fill_triangle(fb, a, b, c, self.fill.colour)
+
+        # If polygon has no volume, draw a line
+        if len(pts) >= 2:
+            for i in range(len(pts)):
+                draw_line(fb, pts[i], pts[(i + 1) % len(pts)], self.stroke.colour)
